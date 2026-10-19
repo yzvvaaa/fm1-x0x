@@ -3,7 +3,8 @@
  * of ER-99 by Matthew Cieplak, GPL-3.0), ported to the FM-1.
  *
  * Circuit-modelled BD, SD, LT/MT/HT, RS, CP; sampled CH/OH (separate PCM buffers,
- * choking each other), CR, RD -- the same models, pot tables and defaults as 9W9. The
+ * choking each other), CR, RD -- based on 9W9, with local snare/clap voicing
+ * and natural-tail hat envelopes. The
  * send reverb / delay and the master stage live in fxbus.{h,c}.
  *
  * Mono, 44.1 kHz, float, no libm, no allocation. Idle voices cost nothing:

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* The 9W9 TR-909 voices on the FM-1. A port of 9W9's er99_engine.c,
  * er99_circuit.h, er99_tom909.h and er99_perc909.h (GPL-3.0): the circuit models,
- * the fitted constants, the defaults and the per-trigger pinning are 9W9's, line
- * for line; only the arithmetic substrate changed (see drum909_dsp.h). Comments
+ * with local snare/clap voicing and natural-tail sample envelopes. The other
+ * voices retain 9W9's constants and defaults (see drum909_dsp.h). Comments
  * that explain WHY a constant is what it is live in 9W9 and are not repeated. */
 #define X0X_DRUM_TABLES_DEFINE              /* the shared lookup tables live here (x0x_drum_tables.h) */
 #include "drum909.h"
@@ -10,7 +10,7 @@
 
 #define D9_VCA_VT 0.0002f
 #define D9_VCA_NORM (1.0f / (1.0f - D9_VCA_VT))
-#define D9_SNAPPY_MIX 1.95f
+#define D9_SNAPPY_MIX 1.525f                /* retain noise power after widening its filter band */
 #define D9_BD_BASE_HZ 49.0f
 #define D9_BD_DF_PER_MS 4.6f
 #define D9_BD_PHOLD_MS 16.0f
@@ -250,7 +250,7 @@ static void d9_bt_init(d9_bt_t *v)
     d9_env_set(&v->noise_env, 0.0f);
     d9_biquad_set(&v->click_lp, D9_LP, v->click_tone > 0.0f ? v->click_tone : 3000.0f, 0.7071f);
     d9_biquad_set(&v->noise_hpf, D9_HP, v->noise_hp > 0.0f ? v->noise_hp : 800.0f, 0.7071f);
-    d9_biquad_set(&v->noise_lpf, D9_LP, 6500.0f, 0.7071f);
+    d9_biquad_set(&v->noise_lpf, D9_LP, 10000.0f, 0.7071f);
     if (v->pitch_mod <= 0.0f)
         v->pitch_mod = 1.0f;
     d9_shape_prep(&v->shape, v->drive, v->dist_type);
@@ -280,7 +280,7 @@ void drum909_init(drum909_t *d)
             b->tune = 205.0f; b->tune2 = 325.0f; b->osc2_mix = 0.40f;
             b->sweep_depth = 1.045f; b->sweep_time = 30.0f;
             b->decay = 340.0f; b->attack = 0.15f;
-            b->snappy = 0.5f; b->noise_decay = 1200.0f; b->noise_hp = 1000.0f;
+            b->snappy = 0.5f; b->noise_decay = 1200.0f; b->noise_hp = 700.0f;
             b->drive = 1.8f; b->level = 0.62f;
             break;
         case 2:
@@ -320,7 +320,7 @@ void drum909_init(drum909_t *d)
     d9_shape_prep(&r->shape, r->drive, r->dist_type);
 
     d9_clap_t *c = &d->clap;
-    c->tune = 950.0f; c->res = 2.0f;
+    c->tune = 950.0f; c->res = 1.0f;
     c->spread = 12.0f; c->burst_decay = 50.0f;
     c->tail_decay = 345.0f; c->tail_level = 0.58f;
     c->drive = 1.6f; c->dist_type = 0; c->level = 1.3f;
@@ -446,11 +446,8 @@ void drum909_trigger(drum909_t *d, int voice, float vel)
         b->osc2_mix = 0.40f;
         b->sweep_depth = 1.045f;
         b->sweep_time = 30.0f;
-        b->attack = 0.0f;                     /* (X0X: the body's decay is its DECAY pot, 9W9's 340 ms by default) */
-        if (b->noise_hp < 990.0f || b->noise_hp > 1010.0f) {
-            b->noise_hp = 1000.0f;
-            d9_biquad_set(&b->noise_hpf, D9_HP, 1000.0f, 0.7071f);
-        }
+        b->attack = 0.15f;
+        d9_biquad_reset(&b->click_lp);
         d9_bt_trigger(b, 0, vgain);
         break;
     }
@@ -484,18 +481,33 @@ void drum909_trigger(drum909_t *d, int voice, float vel)
     }
     default: {
         d9_smp_t *s = &d->smp[voice - DR_CH];
-        if (voice == DR_CH || voice == DR_OH) {
+        const int hat = voice == DR_CH || voice == DR_OH;
+        if (hat) {
             /* one pair of cymbals: each choke the other with a 3 ms fade */
             d9_smp_t *o = &d->smp[voice == DR_CH ? DR_OH - DR_CH : 0];
             d9_env_exp(&o->out, 0.00001f, 3.0f * 0.001f * D9_SR);
             o->mute = d9_ceil(6.0f * 0.001f * D9_SR);
         }
         d9_env_set(&s->out, s->volume * vgain);
-        d9_env_exp(&s->out, 0.00001f, s->decay * 0.001f * D9_SR);
+        float duration = s->decay * D9_MS;
+        if (hat) {
+            const float length = (float)s->len / s->pitch;
+            const int decay = d->pots[voice][0];
+            /* The recording already decays: approach its full tail smoothly at 127. */
+            if (decay < 127) {
+                duration *= 127.0f / (float)(127 - decay);
+                d9_env_exp(&s->out, 0.00001f, duration);
+            } else {
+                duration = length;
+            }
+            if (duration > length) duration = length;
+        } else {
+            d9_env_exp(&s->out, 0.00001f, duration);
+        }
         s->pos = 0;
         s->frac = 0;
         s->playing = 1;
-        s->mute = d9_ceil(s->decay * 0.001f * D9_SR);
+        s->mute = d9_ceil(duration);
         break;
     }
     }
@@ -581,8 +593,7 @@ static void d9_render_bd(d9_bt_t *v, const float *nz, const d9_bus_t *bus, int n
     }
 }
 
-/* Snare (er99_bt_render, two shells + ENV4 noise). Its click path is pinned
- * off (attack 0 at every trigger), so it is not computed: 0 either way. */
+/* Snare: two shells, a wider snare-wire band and a short filtered-noise attack. */
 static void d9_render_sd(d9_bt_t *v, const float *nz, const d9_bus_t *bus, int n)
 {
     const int m = n < v->mute ? n : v->mute;
@@ -603,6 +614,9 @@ static void d9_render_sd(d9_bt_t *v, const float *nz, const d9_bus_t *bus, int n
         o += d9_diode20(d9_tri(v->ph2)) * mix2;
         o *= inv_mix;
         float y = d9_shape(&v->shape, o, v->crush_st) * amp;
+
+        if (v->click_env.left)
+            y += d9_biquad_tick(&v->click_lp, nz[i]) * d9_env_tick(&v->click_env) * v->attack;
 
         if (v->snappy > 0.0f && !v->noise_gated) {
             if (v->noise_hold > 0 && --v->noise_hold == 0)
@@ -692,6 +706,7 @@ static void d9_render_rim(d9_rim_t *v, const float *nz, const d9_bus_t *bus, int
 static void d9_render_clap(d9_clap_t *v, const float *nz, const d9_bus_t *bus, int n)
 {
     static const float amp[4] = { 1.22f, 1.35f, 1.68f, 1.0f };
+    static const float gap[4] = { 0.75f, 13.0f / 12.0f, 17.0f / 12.0f, 1.0f };
     const int m = n < v->mute ? n : v->mute;
     v->mute -= m;
     d9_env_anchor(&v->burst);
@@ -705,13 +720,13 @@ static void d9_render_clap(d9_clap_t *v, const float *nz, const d9_bus_t *bus, i
                     d9_env_set(&v->tail, v->tail_level);
                     d9_env_exp(&v->tail, 0.00001f, v->tail_decay * D9_MS);
                 }
+                v->next_pulse = v->spread * gap[v->pulse_index] * D9_MS;
                 v->pulse_index++;
-                v->next_pulse = v->spread * D9_MS;
             }
             v->next_pulse -= 1.0f;
         }
         const float env = d9_env_tick(&v->burst) + d9_env_tick(&v->tail);
-        float y = d9_biquad_tick(&v->bp, nz[i]) * env;
+        float y = d9_biquad_tick(&v->bp, nz[i]) * env * 0.72f; /* broader band, same level into drive */
         y = d9_shape(&v->shape, y, v->crush_st);
         y = d9_biquad_tick(&v->hp, y);
         d9_emit(bus, i, y * v->level * v->accent);

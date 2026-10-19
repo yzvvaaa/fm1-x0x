@@ -197,7 +197,14 @@ static void fx_reverb(fxbus_t *f, const float *in, float *out, float *out_r, int
     float *ar0 = f->apr, *ar1 = f->apr + fx_alr[0];
     int32_t quiet = f->rv_quiet;
     for (int i = 0; i < n; ++i) {
-        const float x = d9_biquad_tick(&f->rv_hp, in[i]);
+        float x = d9_biquad_tick(&f->rv_hp, in[i]);
+        {   /* Diffuse the excitation before the combs using the existing first allpass. */
+            const int32_t p = f->apos[0];
+            const float bo = ab0[p];
+            ab0[p] = x + bo * 0.5f;
+            x = bo - ab0[p] * 0.5f;
+            f->apos[0] = p + 1 >= fx_al[0] ? 0 : p + 1;
+        }
         float acc = 0.0f, acc_r = 0.0f;
         int32_t wr = 0;
         for (int c = 0; c < 4; ++c) {
@@ -217,17 +224,10 @@ static void fx_reverb(fxbus_t *f, const float *in, float *out, float *out_r, int
         }
         float y = acc * 0.25f;
         {
-            const int32_t p = f->apos[0];
-            const float bo = ab0[p];
-            ab0[p] = y + bo * 0.5f;
-            y = bo - y * 0.5f;
-            f->apos[0] = p + 1 >= fx_al[0] ? 0 : p + 1;
-        }
-        {
             const int32_t p = f->apos[1];
             const float bo = ab1[p];
             ab1[p] = y + bo * 0.5f;
-            y = bo - y * 0.5f;
+            y = bo - ab1[p] * 0.5f;
             f->apos[1] = p + 1 >= fx_al[1] ? 0 : p + 1;
         }
         out[i] += y * lvl;
@@ -236,12 +236,12 @@ static void fx_reverb(fxbus_t *f, const float *in, float *out, float *out_r, int
             int32_t p = f->aposr[0];
             float bo = ar0[p];
             ar0[p] = yr + bo * 0.5f;
-            yr = bo - yr * 0.5f;
+            yr = bo - ar0[p] * 0.5f;
             f->aposr[0] = p + 1 >= fx_alr[0] ? 0 : p + 1;
             p = f->aposr[1];
             bo = ar1[p];
             ar1[p] = yr + bo * 0.5f;
-            yr = bo - yr * 0.5f;
+            yr = bo - ar1[p] * 0.5f;
             f->aposr[1] = p + 1 >= fx_alr[1] ? 0 : p + 1;
             out_r[i] += yr * lvl;
         }

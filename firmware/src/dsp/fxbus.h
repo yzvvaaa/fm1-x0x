@@ -4,8 +4,10 @@
  *
  *   out = volume * glue( dist( dry + reverb(rev) + delay(dly) ) )
  *
- *  - Reverb: four combs + two allpasses, the comb loop quantised to 12 bits
- *    (the early-rack grain), damping in the loop, HPF on the send.
+ *  - Reverb: input diffusion, four combs, output allpasses; the comb loop is
+ *    quantised to 12 bits, with damping and an HPF on the send. The local
+ *    voicing reuses the first left allpass for input diffusion, with true
+ *    allpass feedback instead of the original colouring approximation.
  *  - Delay: a note division of the tempo, slewed so time changes warp instead of
  *    clicking, feedback through a darkening one-pole, 12-bit write, HPF on the
  *    send. TYPE = DIGI is 9W9's delay exactly. TYPE = TAPE (an X0X addition, for
@@ -43,8 +45,7 @@ struct fxbus {
     int32_t cpos[4], apos[2];
     float cdmp[4];
     int32_t rv_quiet;
-    float apr[FX_RV_APR_TOTAL];       /* X0X stereo: the right side reads the combs with alternating
-                                       * signs through its own allpasses (the left is 9W9's) */
+    float apr[FX_RV_APR_TOTAL];       /* right return: alternate comb signs, two output allpasses */
     int32_t aposr[2];
     /* delay */
     float dl_time_ms, dl_fdbk, dl_tone, dl_level, bpm, wear;

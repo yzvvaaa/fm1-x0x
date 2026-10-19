@@ -46,6 +46,7 @@ run lz sh -c "$CC $W -o $OUT/lz_test tests/host/lz_test.c && $OUT/lz_test"
 run motion sh -c "$CC $W -o $OUT/motion_test tests/host/motion_test.c firmware/src/seq/motion.c && $OUT/motion_test"
 run drum-samples python3 tests/host/drum_samples_test.py
 run drum909-hats sh -c "$CC $W -Ifirmware/src/dsp -Ibuild/gen -o $OUT/drum909_hats_test tests/host/drum909_hats_test.c firmware/src/dsp/drum909.c -lm && $OUT/drum909_hats_test"
+run drum909-voicing sh -c "$CC $W -Ifirmware/src/dsp -Ibuild/gen -o $OUT/drum909_voicing_test tests/host/drum909_voicing_test.c firmware/src/dsp/drum909.c firmware/src/dsp/fxbus.c -lm && $OUT/drum909_voicing_test"
 run drum-pan sh -c "$CC -O2 -ffp-contract=off -w -Ifirmware/src/dsp -Ifirmware/src -Ibuild/gen -o $OUT/drum_pan_test tests/host/drum_pan_test.c firmware/src/dsp/drum909.c firmware/src/dsp/drum808.c -lm && $OUT/drum_pan_test"
 run stereo sh -c "$CC -O2 -ffp-contract=off -w -Ifirmware/src/dsp -Ifirmware/src -Ibuild/gen -o $OUT/stereo_test tests/host/stereo_test.c firmware/src/dsp/master.c firmware/src/dsp/fxbus.c -lm && $OUT/stereo_test"
 run master sh -c "$CC $W -Wno-double-promotion -o $OUT/master_test tests/host/master_test.c firmware/src/dsp/master.c -lm && $OUT/master_test"

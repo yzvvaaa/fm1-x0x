@@ -39,10 +39,42 @@ int main(void)
         assert(dry[0] == (float)pcm[s->len - 1] / 65536.0f);
         assert(dry[1] == 0.0f);
     }
+    /* Max decay preserves the entire recording; the next pot step is nearly flat. */
+    for (int voice = DR_CH; voice <= DR_OH; ++voice) {
+        drum909_init(&d);
+        drum909_set(&d, voice, 0, 127);
+        drum909_trigger(&d, voice, 1.0f);
+        d9_smp_t *s = &d.smp[voice - DR_CH];
+        const int16_t *pcm = s->buf;
+        const float gain = s->out.v;
+        assert(s->out.left == 0 && s->mute == (int)s->len);
+        for (unsigned pos = 0; pos < s->len; pos += N) {
+            const int n = s->len - pos < N ? (int)(s->len - pos) : N;
+            render(n);
+            for (int i = 0; i < n; ++i)
+                assert(dry[i] == ((float)pcm[pos + (unsigned)i] / 32768.0f) * gain);
+        }
+        assert(s->mute == 0);
+        render(N);
+        for (int i = 0; i < N; ++i) assert(dry[i] == 0.0f);
+        drum909_set(&d, voice, 0, 126);
+        drum909_trigger(&d, voice, 1.0f);
+        for (unsigned pos = 0; pos < s->len; pos += N) render(N);
+        assert(s->out.cur > gain * 0.9f);
+        /* A slower pitch gets a longer lifetime instead of cutting off its tail. */
+        drum909_set(&d, voice, 2, 0);
+        drum909_set(&d, voice, 0, 127);
+        drum909_trigger(&d, voice, 1.0f);
+        assert(s->mute == (int)s->len * 4);
+        while (s->mute > 0) render(s->mute < N ? s->mute : N);
+        assert(s->pos == s->len);
+    }
     /* Both directions: the old hat fades over 3 ms and stops rendering by 6 ms. */
     for (int voice = DR_CH; voice <= DR_OH; ++voice) {
         drum909_init(&d);
         const int other = voice == DR_CH ? DR_OH : DR_CH;
+        drum909_set(&d, voice, 0, 127);
+        drum909_set(&d, other, 0, 127);
         drum909_trigger(&d, other, 1.0f);
         render(N);
         d9_smp_t *old = &d.smp[other - DR_CH];

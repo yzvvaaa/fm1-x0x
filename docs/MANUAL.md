@@ -240,6 +240,10 @@ recordings (see assets/909/README.txt). Every other sound on both
 machines is synthesized. On the 808, a track's SOUND setting switches it between tom and conga,
 rim and claves, or clap and maracas. On both, the closed hat cuts off the open hat.
 
+In this local [voicing variant](DRUM-VOICING.md), hat Decay at 127 plays the full
+recording, adjusted for Tune, until its end or a choke. The 909 snare/clap and the
+shared reverb have a different voicing; their existing controls are retained.
+
 **Writing a beat.** Press a black key to pick a track; while the pattern is stopped you hear it
 too. (While it plays, picking is silent so you don't add a stray hit; GLO > KEY SOUND = ALWAYS
 changes that.) Then press white keys: an empty step turns on, and a tap on a step that's on
