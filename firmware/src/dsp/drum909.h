@@ -2,8 +2,8 @@
 /* X0X drum part: the 9W9 TR-909 engine (Charles Vestal, GPL-3.0; itself grown out
  * of ER-99 by Matthew Cieplak, GPL-3.0), ported to the FM-1.
  *
- * Circuit-modelled BD, SD, LT/MT/HT, RS, CP; sampled CH/OH (one buffer, choking
- * each other), CR, RD -- the same models, pot tables and defaults as 9W9. The
+ * Circuit-modelled BD, SD, LT/MT/HT, RS, CP; sampled CH/OH (separate PCM buffers,
+ * choking each other), CR, RD -- the same models, pot tables and defaults as 9W9. The
  * send reverb / delay and the master stage live in fxbus.{h,c}.
  *
  * Mono, 44.1 kHz, float, no libm, no allocation. Idle voices cost nothing:
@@ -78,7 +78,7 @@ typedef struct {
     float decay, volume, pitch, drive;
     int32_t dist_type;
     d9_shape_t shape;
-    const uint8_t *buf;           /* mu-law (x0x_mulaw) */
+    const void *buf;              /* PCM16 hats or mu-law cymbals, in flash */
     uint32_t len;
     uint32_t pos, frac;           /* 32.32 read position */
     uint32_t inc, incf;           /* 32.32 playback rate */

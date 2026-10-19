@@ -13,7 +13,7 @@ CC="${CC:-cc}"
 OUT=build/drum909_test
 mkdir -p "$OUT"
 
-# the reference plays the samples as the device does (mu-law, 8-bit): its own module directory with
+# the reference plays the samples as the device does (PCM16 hats, mu-law cymbals): its own module directory with
 # those, everything else 9W9's, so the comparison measures the 909's DSP and not the sample codec
 REFMOD="$OUT/ref_module"
 rm -rf "$REFMOD" && mkdir -p "$REFMOD"
@@ -22,13 +22,13 @@ python3 tools/gen_drum_samples.py build/gen/x0x_drum_samples.h --ref-wavs "$REFM
 
 # the reference: 9W9's engine as 9W9 builds it (libm, doubles)
 "$CC" -O2 -ffp-contract=off -w -I"$NINEW9_DIR/src/dsp" -c "$NINEW9_DIR/src/dsp/er99_engine.c" -o "$OUT/er99_engine.o"
-"$CC" -O2 -ffp-contract=off -w -I"$NINEW9_DIR/src/dsp" -c tests/host/drum909_ref.c -o "$OUT/drum909_ref.o"
+"$CC" -O2 -ffp-contract=off -w -I"$NINEW9_DIR/src/dsp" -Ibuild/gen -c tests/host/drum909_ref.c -o "$OUT/drum909_ref.o"
 
 # the same reference with its biquads in double: measures 9W9's own float noise
 rm -rf "$OUT/ref_dbl" && cp -R "$NINEW9_DIR/src/dsp" "$OUT/ref_dbl"
 perl -0pi -e 's/float x1, x2, y1, y2;/double x1, x2, y1, y2;/; s/const float y = f->b0 \* _in \+ f->b1 \* f->x1 \+ f->b2 \* f->x2\s*- f->a1 \* f->y1 - f->a2 \* f->y2;/const double y = (double)f->b0 * _in + (double)f->b1 * f->x1 + (double)f->b2 * f->x2 - (double)f->a1 * f->y1 - (double)f->a2 * f->y2;/; s/f->y2 = f->y1; f->y1 = y;\n    return y;/f->y2 = f->y1; f->y1 = y;\n    return (float)y;/' "$OUT/ref_dbl/webaudio.h"
 grep -q "double x1, x2, y1, y2" "$OUT/ref_dbl/webaudio.h" && grep -q "return (float)y" "$OUT/ref_dbl/webaudio.h" || { echo "patching webaudio.h failed"; exit 2; }
-"$CC" -O2 -ffp-contract=off -w -I"$OUT/ref_dbl" -c tests/host/drum909_refd.c -o "$OUT/drum909_refd.o"
+"$CC" -O2 -ffp-contract=off -w -I"$OUT/ref_dbl" -Ibuild/gen -c tests/host/drum909_refd.c -o "$OUT/drum909_refd.o"
 
 # the port, warnings are errors
 WARN="-Wall -Wextra -Wdouble-promotion -Werror"

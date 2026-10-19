@@ -235,7 +235,8 @@ Each drum machine has eleven tracks, one on each black key:
 | 10 | Crash (CR) | Open hat (OH) |
 | 11 | Ride (RD) | Closed hat (CH) |
 
-The 909's hats and cymbals are samples, as on the original machine; every other sound on both
+The 909's hats and cymbals are samples; this local version uses separate closed/open hat
+recordings (see assets/909/README.txt). Every other sound on both
 machines is synthesized. On the 808, a track's SOUND setting switches it between tom and conga,
 rim and claves, or clap and maracas. On both, the closed hat cuts off the open hat.
 
@@ -927,7 +928,8 @@ firmware, you must also share its source code.
 - The platform (hardware layer, USB, update loader, installer and storage) is from
   **Felucca** by Leo Kuroshita, Hügelton Instruments.
 - The 909 is from **9W9** by athousanddetails, which is based on **ER-99** by Matthew
-  Cieplak. Its hat and cymbal samples are ER-99's.
+  Cieplak. Its ride/crash samples are ER-99's; this local version's closed/open hats are
+  user-supplied Ableton Core Library recordings with separate asset rights.
 - The 808 is from **8W8** by athousanddetails.
 - The 303 is from **schwung-303**, built on Open303 by Robin Schmidt (MIT licence), with
   extensions based on jc303 and dm-Rat.

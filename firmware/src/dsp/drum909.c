@@ -347,7 +347,8 @@ void drum909_init(drum909_t *d)
         d9_shape_prep(&s->shape, s->drive, s->dist_type);
         if (i == 2) { s->buf = x0x_smp_crash; s->len = X0X_SMP_CRASH_LEN; }
         else if (i == 3) { s->buf = x0x_smp_ride; s->len = X0X_SMP_RIDE_LEN; }
-        else { s->buf = x0x_smp_hh; s->len = X0X_SMP_HH_LEN; }
+        else if (i == 0) { s->buf = x0x_smp_ch; s->len = X0X_SMP_CH_LEN; }
+        else { s->buf = x0x_smp_oh; s->len = X0X_SMP_OH_LEN; }
     }
 
     d->accent = 2.0f;
@@ -718,7 +719,7 @@ static void d9_render_clap(d9_clap_t *v, const float *nz, const d9_bus_t *bus, i
 }
 
 /* Hats, ride, crash (render_sampler) */
-static void d9_render_smp(d9_smp_t *s, const d9_bus_t *bus, int n)
+static void d9_render_smp(d9_smp_t *s, const d9_bus_t *bus, int n, int pcm16)
 {
     if (!s->playing)
         return;
@@ -728,12 +729,14 @@ static void d9_render_smp(d9_smp_t *s, const d9_bus_t *bus, int n)
     const int drive = s->drive > 0.25f;
     const float pre = 1.0f + s->drive * 0.5f;
     const uint8_t *buf = s->buf;
+    const int16_t *pcm = pcm16 ? s->buf : 0;
     const uint32_t len = s->len;
     for (int i = 0; i < m; ++i) {
         float v = 0.0f;
         if (s->pos < len) {
-            const float a = (float)x0x_mulaw[buf[s->pos]] * (1.0f / 32768.0f);
-            const float b = s->pos + 1 < len ? (float)x0x_mulaw[buf[s->pos + 1]] * (1.0f / 32768.0f) : 0.0f;
+            const float a = (float)(pcm ? pcm[s->pos] : x0x_mulaw[buf[s->pos]]) * (1.0f / 32768.0f);
+            const float b = s->pos + 1 < len
+                ? (float)(pcm ? pcm[s->pos + 1] : x0x_mulaw[buf[s->pos + 1]]) * (1.0f / 32768.0f) : 0.0f;
             const float fr = (float)s->frac * (1.0f / 4294967296.0f);
             v = a + (b - a) * fr;
             const uint32_t f2 = s->frac + s->incf;
@@ -808,7 +811,7 @@ static void d9_render(drum909_t *d, float *dry, float *rev, float *dly, int n)
         d9_smp_t *s = &d->smp[order[k] - DR_CH];
         if (s->mute > 0) {
             d9_bus(&bus, d, order[k], dry, rev, dly);
-            d9_render_smp(s, &bus, n);
+            d9_render_smp(s, &bus, n, order[k] <= DR_OH);
         }
     }
 }

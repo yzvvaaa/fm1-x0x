@@ -4,11 +4,22 @@
  * reference header and builds under the port's warning flags. */
 #include <stdlib.h>
 #include "er99_engine.h"
+#include "x0x_drum_samples.h"
 
 void *ref_new(const char *module_dir)
 {
     er99_engine_t *e = (er99_engine_t *)calloc(1, sizeof(er99_engine_t));
     er99_engine_init(e, 44100.0f, module_dir);
+    /* Supply the new recordings without changing the reference's DSP. */
+    static float ch[X0X_SMP_CH_LEN], oh[X0X_SMP_OH_LEN];
+    for (unsigned i = 0; i < X0X_SMP_CH_LEN; ++i)
+        ch[i] = (float)x0x_smp_ch[i] / 32768.0f;
+    for (unsigned i = 0; i < X0X_SMP_OH_LEN; ++i)
+        oh[i] = (float)x0x_smp_oh[i] / 32768.0f;
+    e->sampler[ER99_SAMP_CHH].buffer = ch;
+    e->sampler[ER99_SAMP_CHH].length = X0X_SMP_CH_LEN;
+    e->sampler[ER99_SAMP_OHH].buffer = oh;
+    e->sampler[ER99_SAMP_OHH].length = X0X_SMP_OH_LEN;
     return e;
 }
 

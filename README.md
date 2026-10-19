@@ -25,7 +25,7 @@ The factory sound is set up for big beat, so it should make noise the moment you
 
 | Part | What it is | Based on |
 |---|---|---|
-| 909 | 11 voices: modelled kick, snare, toms, rim and clap, with sampled hats and cymbals | [9W9](https://github.com/athousanddetails/schwung-9W9) (samples from ER-99) |
+| 909 | 11 voices: modelled kick, snare, toms, rim and clap, with separate closed/open hat samples and sampled cymbals | [9W9](https://github.com/athousanddetails/schwung-9W9); sample sources in [assets/909/README.txt](assets/909/README.txt) |
 | 808 | 11 tracks, including the 808's tom/conga, rim/claves and clap/maracas switches | [8W8](https://github.com/athousanddetails/schwung-8W8) |
 | 303 A and B | Open303 with Devilfish-style ranges, each with a TB-3PO line generator | [schwung-303](https://github.com/charlesvestal/schwung-303), [schwung-tb3po](https://github.com/charlesvestal/schwung-tb3po) |
 | Break | A loop cut into eight slices and rearranged as it plays | [BB Gen](https://github.com/mestela/schwung-breakbeat) |
@@ -68,7 +68,9 @@ X0X is tested before it reaches the FM-1.
 
 X0X is GPL-3.0-only, like Felucca, 9W9, 8W8 and schwung-tb3po. Open303 (by Robin Schmidt) is
 MIT. BB Gen is ported from mestela's schwung-breakbeat with the author's permission. The 909's
-hi-hat, ride and crash samples come from ER-99 (Matthew Cieplak, GPL-3.0). The fonts are Barlow
+ride and crash samples come from ER-99 (Matthew Cieplak, GPL-3.0). This local version's hi-hat
+recordings are user-supplied Ableton Core Library samples and retain their own rights
+(see [sample notes](assets/909/README.txt)). The fonts are Barlow
 Semi Condensed and Terminus (SIL OFL 1.1).
 
 The second core follows what keremimo's [Melodee](https://github.com/keremimo/melodee) found on the

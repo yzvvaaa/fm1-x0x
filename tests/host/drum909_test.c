@@ -541,7 +541,7 @@ int main(int argc, char **argv)
     drum909_init(&D);
     printf("sizeof(drum909_t) %u, sizeof(fxbus_t) %u, delay line %u bytes (int16 x %d), samples %u bytes flash\n",
            (unsigned)sizeof(drum909_t), (unsigned)sizeof(fxbus_t), (unsigned)sizeof(DLY), DLY_LEN,
-           (unsigned)((D.smp[0].len + D.smp[2].len + D.smp[3].len) * 2));
+           (unsigned)((D.smp[0].len + D.smp[1].len) * 2 + D.smp[2].len + D.smp[3].len + 512));
     check_tables();
     voice_cases();
     kit_cases();
