@@ -95,6 +95,7 @@ typedef struct {                      /* one part's runtime */
     uint8_t held_note;
     uint32_t to_next;                 /* samples to the next step (Q8 fraction) */
     uint32_t to_off;                  /* 303: samples to the gate falling, Q8; 0 = none */
+    uint32_t elapsed;                 /* samples since the current grid step, Q8 (live recording) */
     uint32_t rng;                     /* DIR_RANDOM and auto-mutate */
     uint16_t bars;                    /* wraps since the pattern started (auto-mutate) */
     uint8_t ext_ticks;                /* external clock: ticks into this step */
@@ -126,6 +127,8 @@ typedef struct {
     uint32_t clk_to_next;             /* internal: samples to the next MIDI clock, Q8 */
     uint32_t ext_since;               /* samples since the last external clock (tempo estimate) */
     uint32_t ext_period;              /* smoothed samples per external clock, Q8 */
+    int32_t ext_to_next;              /* predicted tick, Q8; INT32_MAX until a tick, negative = overdue */
+    int32_t ext_diff;                 /* received minus predicted ticks (phase error, including wraps) */
     volatile uint32_t ext_pending;    /* external clocks received, not yet consumed */
     volatile uint8_t req_start, req_stop, req_cont; /* transport requests from the UI / MIDI */
     uint32_t mut_rng[NBASS];          /* auto-mutate random streams */
@@ -141,6 +144,7 @@ void seq_start(seq_t *s);             /* from step 1 of the current (or cued) pa
 void seq_stop(seq_t *s);
 void seq_continue(seq_t *s);
 void seq_ext_clock(seq_t *s);         /* one 24-ppqn tick (USB MIDI 0xF8) */
+void seq_midi_start(seq_t *s, int resume); /* MIDI Start / Continue: wait for the master's first clock */
 void seq_cue(seq_t *s, int pattern);  /* every part, at the end of the bar (now, if stopped) */
 void seq_cue_part(seq_t *s, int part, int pattern);
 void seq_chain(seq_t *s, int a, int b);
@@ -152,3 +156,4 @@ uint32_t seq_step_q8(const seq_t *s, int rate);
 float seq_tempo(const seq_t *s);      /* the tempo in effect (internal or measured) */
 int seq_part_len(const seq_t *s, int t);         /* steps in part t's pattern */
 int seq_next_step(seq_t *s, int t, int p);       /* the step after p (direction; no commit) */
+int seq_record_step(seq_t *s, int t);           /* nearest grid step, respecting rate / swing / direction */

@@ -310,7 +310,7 @@ static void test_ext_clock_and_midi_out(void)
     for (i = 0; i < 24 * 4; i++) {                            /* one bar of ticks */
         uint32_t t0 = now;
         seq_ext_clock(&S);
-        run(per_tick);
+        run(per_tick - (i == 24 * 4 - 1));              /* exclude the next predicted downbeat */
         (void)t0;
     }
     CHECK(S.ext == 1, "following the external clock");
@@ -336,6 +336,152 @@ static void test_ext_clock_and_midi_out(void)
     run(256);
     CHECK(find(E_MIDI, 0xFC, 0) > 0, "Stop sent");
     printf("  external clock follow + tempo, MIDI clock out: checked\n");
+}
+
+static void test_clock_buffering(void)
+{
+    int bpm, i, k, first, last, lo, hi;
+    /* Model clocks arriving together at a 512-frame DMA boundary, as on the FM-1. */
+    for (bpm = 30; bpm <= 300; bpm += 30) {
+        double period = 44100.0 * 60.0 / (bpm * 24.0), tick = 0;
+        double step = period * 6.0;
+        uint32_t end = (uint32_t)(step * 256);
+        reset();
+        P[0].drum[0].hit[7][0] = 0xFFFFu;
+        seq_midi_start(&S, 0);
+        while (now < end) {
+            while (tick <= now) {
+                seq_ext_clock(&S);
+                tick += period;
+            }
+            run(end - now < 512u ? end - now : 512u);
+        }
+        first = last = -1;
+        lo = 1000000;
+        hi = -1000000;
+        for (i = 0, k = 0; (i = find(E_DRUM, 7, i)) >= 0; i++, k++) {
+            int error = (int)evs[i].t - (int)(k * step + 0.5);
+            if (k < 32) continue;                    /* acquisition is tested separately below */
+            if (first < 0) first = i;
+            last = i;
+            if (error < lo) lo = error;
+            if (error > hi) hi = error;
+        }
+        CHECK(first >= 0 && last > first, "clock buffering: enough events");
+        CHECK(hi - lo < 256, "%d BPM clock phase varies %d samples, want <256", bpm, hi - lo);
+        CHECK(lo > -512 && hi < 1024, "%d BPM stays aligned: phase %d..%d", bpm, lo, hi);
+        CHECK(k == 256, "%d BPM: no dropped/extra steps (%d)", bpm, k);
+        CHECK(S.ext_bpm > bpm - 3 && S.ext_bpm < bpm + 3, "%d BPM estimate %.2f", bpm, (double)S.ext_bpm);
+        printf("  buffered clock %d BPM: phase range %d..%d samples, %d steps\n", bpm, lo, hi, k);
+    }
+    /* Cold Start before the first clock must not play a step, then skip one at that clock. */
+    reset();
+    P[0].drum[0].hit[7][0] = 0xFFFFu;
+    seq_midi_start(&S, 0);
+    run(300);
+    CHECK(find(E_DRUM, 7, 0) < 0, "MIDI Start waits for its clock");
+    seq_ext_clock(&S);
+    run(100);
+    i = find(E_DRUM, 7, 0);
+    CHECK(i >= 0 && evs[i].t == 300 && S.t[0].pos == 0, "first MIDI clock plays step 1 exactly once");
+    seq_stop(&S);
+    run(1);
+    nev = 0;
+    for (i = 0; i < 12; i++) { seq_ext_clock(&S); run(919); }
+    CHECK(find(E_DRUM, 7, 0) < 0, "clocks while stopped make no hits");
+    seq_midi_start(&S, 1);
+    run(100);
+    CHECK(find(E_DRUM, 7, 0) < 0, "Continue waits for its clock");
+    seq_ext_clock(&S);
+    run(1);
+    CHECK(S.t[0].pos == 1, "Continue resumes at the next step");
+    run(FS);
+    CHECK(!S.ext && !S.ext_period, "clock loss resets stale tempo for the next acquisition");
+}
+
+static void test_clock_tempo_changes(void)
+{
+    double tick = 0, grid[256];
+    int sent = 0, grids = 0, i, k, lo = 1000000, hi = -1000000;
+    reset();
+    P[0].drum[0].hit[7][0] = 0xFFFFu;
+    P[0].drum[0].len = 16;
+    seq_midi_start(&S, 0);
+    while (now < FS * 18u) {
+        while (tick <= now) {
+            int bpm = tick < FS * 6u ? 120 : tick < FS * 12u ? 150 : 90;
+            if (sent++ % 6 == 0) grid[grids++] = tick;
+            seq_ext_clock(&S);
+            tick += 44100.0 * 60.0 / (bpm * 24.0);
+        }
+        run(512);
+    }
+    for (i = 0, k = 0; (i = find(E_DRUM, 7, i)) >= 0; i++, k++)
+        if (k < grids && grid[k] > FS * 15u) {     /* settled after both faster and slower changes */
+            int error = (int)evs[i].t - (int)(grid[k] + 0.5);
+            if (error < lo) lo = error;
+            if (error > hi) hi = error;
+        }
+    CHECK(abs(k - grids) <= 1, "tempo changes preserve tick count: %d of %d steps", k, grids);
+    CHECK(lo > -512 && hi < 1024 && hi - lo < 512, "tempo change re-locks, phase %d..%d samples", lo, hi);
+    CHECK(S.ext_bpm > 88 && S.ext_bpm < 92, "tempo changed to 90 BPM: %.2f", (double)S.ext_bpm);
+    printf("  120 -> 150 -> 90 BPM: final phase %d..%d samples, count %d/%d\n", lo, hi, k, grids);
+}
+
+static void test_record_grid(void)
+{
+    int rate, swing, dir, i;
+    for (rate = 0; rate < NRATES; rate++)
+        for (swing = 0; swing <= 100; swing += 100)
+            for (dir = 0; dir < NDIRS; dir++) {
+                reset();
+                S.bpm = 125;
+                P[0].swing = (uint8_t)swing;
+                P[0].bass[0].len = 3;                 /* odd-length wrap / reverse / ping-pong */
+                P[0].bass[0].rate = (uint8_t)rate;
+                P[0].bass[0].dir = (uint8_t)dir;
+                seq_start(&S);
+                seq_advance(&S, 0, &SINK);
+                for (i = 0; i < 12; i++) {
+                    seq_track_t *tr = &S.t[TRK_BASS0];
+                    uint32_t span = tr->to_next;
+                    int current = tr->pos, next;
+                    CHECK(seq_record_step(&S, TRK_BASS0) == current, "record on grid: current step");
+                    run((span / 2u - 256u) >> 8);
+                    CHECK(seq_record_step(&S, TRK_BASS0) == current, "record before midpoint: current step");
+                    run(2);
+                    next = seq_record_step(&S, TRK_BASS0);
+                    run((tr->to_next + 255u) >> 8);
+                    CHECK(next == tr->pos, "record after midpoint predicts actual next step: rate %d swing %d dir %d (%d vs %d)",
+                          rate, swing, dir, next, tr->pos);
+                }
+            }
+    printf("  nearest recording grid: all rates, swing, odd lengths and four directions\n");
+}
+
+static void test_external_swing_and_cue(void)
+{
+    int i, k, on;
+    reset();
+    S.bpm = S.ext_bpm = 125;
+    P[0].swing = 100;
+    P[0].drum[0].hit[7][0] = 0xFFFF;
+    P[1].bass[0].step[0] = (bstep_t){50, G_NOTE};
+    seq_midi_start(&S, 0);
+    for (i = 0; i < 96 + 12; i++) {
+        seq_ext_clock(&S);
+        run(882);
+        if (i == 6) seq_cue_part(&S, TRK_BASS0, 1);
+    }
+    for (i = 0, k = 0; (i = find(E_DRUM, 7, i)) >= 0 && k < 16; i++, k++) {
+        int want = k * 5292 + (k & 1 ? 2646 : 0);
+        CHECK(abs((int)evs[i].t - want) <= 1, "external swing step %d: %u vs %d", k, evs[i].t, want);
+    }
+    on = find(E_ON, 0, 0);
+    CHECK(on >= 0 && evs[on].b == 50 && abs((int)evs[on].t - 16 * 5292) <= 1,
+          "external cue starts on the bar, not one MIDI tick later");
+    CHECK(S.ppat[TRK_BASS0] == 1, "external cue applied");
+    printf("  external swing and per-part cue share the exact grid\n");
 }
 
 static void test_break_clock(void)
@@ -421,6 +567,10 @@ int main(void)
     test_part_cue();
     test_song();
     test_ext_clock_and_midi_out();
+    test_clock_buffering();
+    test_clock_tempo_changes();
+    test_record_grid();
+    test_external_swing_and_cue();
     test_break_clock();
 #ifdef REF_TB3PO
     test_tb3po_matches_reference();

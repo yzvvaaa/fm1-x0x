@@ -4,6 +4,7 @@
 #include "tb3po.h"
 
 #define NEVER 0xFFFFFFFFu
+#define EXT_WAIT 0x7FFFFFFF
 
 static const uint8_t TICKS_PER_STEP[NRATES] = {6, 4, 3, 8};     /* 24 ppqn: 1/16, 1/16T, 1/32, 1/8T */
 static const uint8_t GM_DRUM[NKIT][NDRUM] = {
@@ -35,6 +36,7 @@ void seq_init(seq_t *s, pattern_t *patterns)
         s->t[i].rng = 0x1234567u * (i + 1);
     }
     s->clk_to_next = NEVER;
+    s->ext_to_next = EXT_WAIT;
 }
 
 float seq_tempo(const seq_t *s) { return s->ext ? s->ext_bpm : s->bpm; }
@@ -320,6 +322,7 @@ static uint32_t fire_step(seq_t *s, int t, const seq_sink_t *o)
     if (changed & 1u)                                /* the 909's new pattern: its passes from 1 again, as */
         tr->bars = 0;                                /* restart() does for the others (probability cycles) */
     tr->pos = (uint8_t)p;
+    tr->elapsed = 0;
     if (o->step)                                     /* first: the step's motion and p-locks, which the hit */
         o->step(o->ctx, t, p);                       /* below must hear (a drum takes its tune as it fires) */
     if (is_drum(t))
@@ -350,8 +353,8 @@ static void restart(seq_t *s, uint32_t parts)  /* parts whose pattern switched: 
         if (!(parts >> t & 1u))
             continue;
         s->t[t].started = 0;
-        s->t[t].to_next = s->ext ? NEVER : 0;
-        s->t[t].ext_ticks = (uint8_t)(TICKS_PER_STEP[part_rate(s, t)] - 1);
+        s->t[t].to_next = 0;                         /* a cue shares this downbeat, not the following tick */
+        s->t[t].ext_ticks = 0;
         s->t[t].bars = 0;
         s->t[t].pp_dir = 1;
     }
@@ -360,6 +363,10 @@ static void restart(seq_t *s, uint32_t parts)  /* parts whose pattern switched: 
 static void do_start(seq_t *s, int from_top, const seq_sink_t *o)
 {
     int t;
+    if (s->ext) {
+        s->ext_to_next = EXT_WAIT;
+        s->ext_diff = 0;
+    }
     if (from_top)
         bar_end(s, 1);                                /* cues, or the song's start bar */
     for (t = 0; t < NTRACKS; t++) {
@@ -393,21 +400,52 @@ static void do_stop(seq_t *s, const seq_sink_t *o)
         midi(o, 0xFC, 0, 0);
 }
 
-/* external clock ticks: arm the steps they complete */
-static void ext_ticks(seq_t *s)
+static uint32_t ext_period(const seq_t *s)
 {
-    int t;
+    return s->ext_period ? s->ext_period : seq_step_q8(s, RATE_16) / 6u;
+}
+
+/* Follow the master's tick count, but spread arrival-time corrections over sixteen ticks.
+ * USB / UART polling and the audio buffer otherwise stamp their jitter onto every step. */
+static void ext_receive(seq_t *s)
+{
     uint32_t n = s->ext_pending;
     s->ext_pending = 0;
-    for (; n; n--) {
-        if (s->ext_since > 0 && s->ext_since < FS) {  /* tempo: smoothed tick period */
-            uint32_t q = s->ext_since << 8;
-            s->ext_period = s->ext_period ? s->ext_period - (s->ext_period >> 3) + (q >> 3) : q;
+    if (s->ext_to_next == EXT_WAIT) {
+        s->ext_to_next = 0;
+        s->ext_diff = 1;
+    } else {
+        int32_t period, error, adjust, next;
+        if (s->ext_since && s->ext_since < FS) {
+            uint32_t q = (s->ext_since << 8) / n;
+            uint32_t i;
+            /* Weight batched ticks equally; single intervals can be shorter than one DMA buffer. */
+            for (i = 0; i < n; i++)
+                s->ext_period = s->ext_period ? s->ext_period - (s->ext_period >> 5) + (q >> 5) : q;
+            if (s->ext_period < FS * 60u * 256u / (300u * 24u)) s->ext_period = FS * 60u * 256u / (300u * 24u);
+            if (s->ext_period > FS * 60u * 256u / (20u * 24u)) s->ext_period = FS * 60u * 256u / (20u * 24u);
             s->ext_bpm = (float)FS * 60.0f * 256.0f / (24.0f * (float)s->ext_period);
         }
-        s->ext_since = 0;
-        if (!s->playing)
-            continue;
+        period = (int32_t)ext_period(s);
+        s->ext_diff += (int32_t)n;
+        if (s->ext_diff > 96) s->ext_diff = 96;     /* bound malformed clock floods to one bar of phase */
+        if (s->ext_diff < -96) s->ext_diff = -96;
+        error = (int32_t)s->ext_to_next + (s->ext_diff - 1) * period;
+        adjust = error / 16;
+        if (adjust > period / 4) adjust = period / 4;
+        if (adjust < -period / 4) adjust = -period / 4;
+        next = (int32_t)s->ext_to_next - adjust;
+        s->ext_to_next = next;
+    }
+    s->ext_since = 0;
+}
+
+/* The smoothed clock arms the steps; the master's count keeps it from drifting. */
+static void ext_tick(seq_t *s)
+{
+    int t;
+    s->ext_diff--;
+    if (s->playing)
         for (t = 0; t < NTRACKS; t++) {
             seq_track_t *tr = &s->t[t];
             int rate = part_rate(s, t), tps = TICKS_PER_STEP[rate];
@@ -416,19 +454,20 @@ static void ext_ticks(seq_t *s)
             tr->ext_ticks = 0;
             {
                 int np = tr->started ? next_pos(s, t, tr->pos, 0) : 0;
-                uint32_t L = s->ext_period ? s->ext_period * (uint32_t)tps : seq_step_q8(s, rate);
+                uint32_t L = ext_period(s) * (uint32_t)tps;
                 tr->to_next = (np & 1) ? swing_q8(s, rate, L) : 0;
             }
         }
-    }
 }
 
 uint32_t seq_until_event(seq_t *s, uint32_t n)
 {
     uint32_t m = n, e;
     int t;
+    if (s->ext && s->ext_to_next != EXT_WAIT && (e = s->ext_to_next > 0 ? (uint32_t)s->ext_to_next >> 8 : 0) < m)
+        m = e;
     if (!s->playing)
-        return n;
+        return m ? m : 1;
     for (t = 0; t < NTRACKS; t++) {
         if (s->t[t].to_next != NEVER && (e = s->t[t].to_next >> 8) < m)
             m = e;
@@ -449,6 +488,9 @@ void seq_advance(seq_t *s, uint32_t k, const seq_sink_t *o)
         s->ext = 1;
     else if (s->ext && s->ext_since > FS / 2u) {    /* clock gone for 0.5 s: back to internal */
         s->ext = 0;
+        s->ext_period = 0;
+        s->ext_to_next = EXT_WAIT;
+        s->ext_diff = 0;
         for (t = 0; t < NTRACKS; t++)
             if (s->playing && s->t[t].to_next == NEVER)
                 s->t[t].to_next = 0;
@@ -468,7 +510,22 @@ void seq_advance(seq_t *s, uint32_t k, const seq_sink_t *o)
         do_start(s, 0, o);
     }
     if (s->ext_pending)
-        ext_ticks(s);
+        ext_receive(s);
+    for (t = 0; s->playing && t < NTRACKS; t++) {   /* move time before arming a newly due swung step */
+        seq_track_t *tr = &s->t[t];
+        tr->elapsed += dq;
+        if (tr->to_next != NEVER)
+            tr->to_next = tr->to_next > dq ? tr->to_next - dq : 0;
+        if (tr->to_off)
+            tr->to_off = tr->to_off > dq ? tr->to_off - dq : 1;
+    }
+    if (s->ext && s->ext_to_next != EXT_WAIT) {
+        s->ext_to_next -= (int32_t)dq;
+        if (s->ext_to_next < 256) {
+            s->ext_to_next += ext_period(s);
+            ext_tick(s);
+        }
+    }
     if (!s->playing) {
         if (!s->ext)
             s->clk_to_next = 0;
@@ -478,13 +535,6 @@ void seq_advance(seq_t *s, uint32_t k, const seq_sink_t *o)
                 s->pcue[t] = 0xFF;
             }
         return;
-    }
-    for (t = 0; t < NTRACKS; t++) {                 /* move time */
-        seq_track_t *tr = &s->t[t];
-        if (tr->to_next != NEVER)
-            tr->to_next = tr->to_next > dq ? tr->to_next - dq : 0;
-        if (tr->to_off)
-            tr->to_off = tr->to_off > dq ? tr->to_off - dq : 1;   /* 1: due, still "set" */
     }
     if (!s->ext && s->send_clock)
         s->clk_to_next = s->clk_to_next > dq ? s->clk_to_next - dq : 0;
@@ -517,6 +567,12 @@ void seq_start(seq_t *s) { s->req_start = 1; }
 void seq_stop(seq_t *s) { s->req_stop = 1; }
 void seq_continue(seq_t *s) { s->req_cont = 1; }
 void seq_ext_clock(seq_t *s) { s->ext_pending++; }
+void seq_midi_start(seq_t *s, int resume)
+{
+    s->ext = 1;
+    if (resume) seq_continue(s);
+    else seq_start(s);
+}
 void seq_cue(seq_t *s, int p)
 {
     int t;
@@ -531,6 +587,23 @@ void seq_cue_part(seq_t *s, int t, int p)
 }
 int seq_cue_of(const seq_t *s, int t) { return s->pcue[t] < NPAT ? s->pcue[t] : -1; }
 int seq_next_step(seq_t *s, int t, int p) { return next_pos(s, t, p, 0); }
+
+int seq_record_step(seq_t *s, int t)
+{
+    seq_track_t *tr = &s->t[t];
+    int p = tr->pos, np = next_pos(s, t, p, 0), rate = part_rate(s, t);
+    if (!tr->started)
+        return is_bass(t) && bpart(s, t - TRK_BASS0)->dir == DIR_REV ? seq_part_len(s, t) - 1 : 0;
+    if (!s->playing)
+        return p;
+    if (is_bass(t) && bpart(s, t - TRK_BASS0)->dir == DIR_RANDOM) {
+        uint32_t r = tr->rng;
+        np = (int)(rng_next(&r) % (uint32_t)seq_part_len(s, t));
+    }
+    uint32_t L = seq_step_q8(s, rate), sw = swing_q8(s, rate, L);
+    uint32_t span = !s->ext ? tr->elapsed + tr->to_next : (np & 1) ? L + sw : (p & 1) ? L - sw : L;
+    return tr->elapsed >= span / 2u ? np : p;
+}
 void seq_chain(seq_t *s, int a, int b)
 {
     s->chain_a = (uint8_t)a;

@@ -440,6 +440,11 @@ HOME's knobs are for playing live: TEMPO, SWING, and the master's FILTER and PUM
 
 Press REC to turn recording on, and again to turn it off.
 
+Live drum hits and 303 notes snap to the nearest grid line: the first half of an
+interval belongs to the current step, the second half to the next. This follows
+the part's rate, swing and playback direction, including the loop wrap. The live
+sound still plays when you press the key. Knob motion keeps its existing timing.
+
 - **Drums:** while the pattern plays, press black keys to record hits (with REC on you always
   hear them). Hold ENV for accented hits.
 - **303, live:** with REC on, the 303's keys are a keyboard; play while the pattern runs.
@@ -753,6 +758,11 @@ is on.
 
 While X0X follows an external clock, the tempo on the top line is averaged over about a second,
 so it doesn't flicker with every clock.
+
+The clock follower smooths the timing of incoming pulses while tracking their count,
+so USB/TRS polling delays do not directly move every step. MIDI Start and Continue
+wait for the first following clock pulse. Large tempo changes take time to settle;
+the clock source and audio buffers can still introduce latency and residual jitter.
 
 ### USB audio
 

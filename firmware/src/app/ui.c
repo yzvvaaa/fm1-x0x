@@ -1896,7 +1896,7 @@ static void turn_ref(pref_t r, int e, int knob)
     motion_touch(r);
 }
 
-static int rec_step(int track) { return eng_step[track]; }
+static int rec_step(int track) { return eng_rec_step[track]; }
 
 static void drum_key(int v, int down)
 {

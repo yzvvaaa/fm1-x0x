@@ -1,0 +1,32 @@
+# Live hits on either side of a grid line belong to that line, not the step behind it.
+wait 300
+tap REC
+expect rec 1
+midi FA 00 00
+wait 20
+expect playing 1
+expect hit0.0.0 0
+midi F8 00 00
+wait 20
+# Just after the first grid line: step 1.
+key b0 down
+wait 10
+key b0 up
+expect hit0.0.0 1
+wait 50
+# Past the midpoint but before step 2: record into step 2.
+key b1 down
+wait 10
+key b1 up
+expect hit0.1.0 0
+expect hit0.1.1 1
+wait 45
+# Just after step 2: still step 2.
+key b2 down
+wait 10
+key b2 up
+expect hit0.2.1 1
+expect hit0.2.2 0
+midi FC 00 00
+wait 30
+expect playing 0

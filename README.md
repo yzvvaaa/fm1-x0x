@@ -33,6 +33,9 @@ The factory sound is set up for big beat, so it should make noise the moment you
 This local [909 voicing variant](docs/DRUM-VOICING.md) refines the synthesized snare,
 clap and shared reverb. At maximum hat Decay, the full recorded tail plays.
 
+The [timing candidate](docs/TIMING.md) also smooths external MIDI clock and snaps
+live drum/303 recording to the nearest grid line.
+
 Each part has its own step length (up to 64 steps) and rate, so parts can drift against each
 other. Pattern changes wait for the end of the bar, and patterns can be chained.
 

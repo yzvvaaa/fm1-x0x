@@ -21,6 +21,7 @@ volatile uint32_t eng_prof[ENG_PROF_N], eng_prof_frames;
 /* ---------------------------------------------------------------- state --- */
 seq_t seq;
 volatile uint8_t eng_step[NTRACKS];
+volatile uint8_t eng_rec_step[NTRACKS];
 volatile uint16_t eng_peak[NPARTS];
 volatile uint8_t eng_hit[NKIT][NDRUM];
 int16_t eng_scope[SCOPE_N];
@@ -451,8 +452,8 @@ static void midi_in(uint32_t pkt)
     int k, v;
     switch (st) {
     case 0xF8: seq_ext_clock(&seq); return;
-    case 0xFA: seq_start(&seq); return;
-    case 0xFB: seq_continue(&seq); return;
+    case 0xFA: seq_midi_start(&seq, 0); return;
+    case 0xFB: seq_midi_start(&seq, 1); return;
     case 0xFC: seq_stop(&seq); return;
     default: break;
     }
@@ -753,6 +754,8 @@ void engine_render(int32_t *out_lr, uint32_t n)
     if (mot_playing && !seq.playing)                     /* stopped: every knob back to its own value */
         motion_release(&mot);
     mot_playing = seq.playing;
+    for (p = 0; p < NTRACKS; p++)
+        eng_rec_step[p] = (uint8_t)seq_record_step(&seq, p);
     {
         PROF_T(pt);
         master_process_st(&mst, out_l, out_r, (int)n, vol);
