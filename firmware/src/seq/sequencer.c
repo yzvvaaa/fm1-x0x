@@ -430,7 +430,7 @@ static void ext_receive(seq_t *s)
         s->ext_diff += (int32_t)n;
         if (s->ext_diff > 96) s->ext_diff = 96;     /* bound malformed clock floods to one bar of phase */
         if (s->ext_diff < -96) s->ext_diff = -96;
-        error = (int32_t)s->ext_to_next + (s->ext_diff - 1) * period;
+        error = s->ext_to_next + (s->ext_diff - 1) * period + (int32_t)(s->ext_advance << 8);
         adjust = error / 16;
         if (adjust > period / 4) adjust = period / 4;
         if (adjust < -period / 4) adjust = -period / 4;

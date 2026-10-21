@@ -127,6 +127,7 @@ typedef struct {
     uint32_t clk_to_next;             /* internal: samples to the next MIDI clock, Q8 */
     uint32_t ext_since;               /* samples since the last external clock (tempo estimate) */
     uint32_t ext_period;              /* smoothed samples per external clock, Q8 */
+    uint32_t ext_advance;             /* external clock's render-ahead compensation, samples (platform sets) */
     int32_t ext_to_next;              /* predicted tick, Q8; INT32_MAX until a tick, negative = overdue */
     int32_t ext_diff;                 /* received minus predicted ticks (phase error, including wraps) */
     volatile uint32_t ext_pending;    /* external clocks received, not yet consumed */

@@ -764,6 +764,12 @@ so USB/TRS polling delays do not directly move every step. MIDI Start and Contin
 wait for the first following clock pulse. Large tempo changes take time to settle;
 the clock source and audio buffers can still introduce latency and residual jitter.
 
+On the physical FM-1, ongoing external-clock playback is predicted 17.4 ms ahead
+to compensate for the audio buffer and average input-polling delay. This applies
+after the follower settles; the first Start, a sudden Stop and immediately
+triggered MIDI notes cannot be predicted. Internal tempo is unaffected. Pattern
+notes sent over USB with NOTES OUT enabled follow the advanced sequencer too.
+
 ### USB audio
 
 Over the same USB cable, the FM-1 also shows up on a computer as an audio input called

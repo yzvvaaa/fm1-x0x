@@ -1,5 +1,8 @@
 # Clock and live-recording timing candidate
 
+The latest local candidate is **1.1.2-aligned**; see the output-alignment
+follow-up below. The measurements and installation record for 1.1.1 remain here.
+
 This version builds on the separate 909 hats and snare/clap/reverb changes.
 Its package is `build/x0x-1.1.1-timing.fwsc`, identity `FM-1_9010101`.
 
@@ -79,3 +82,38 @@ The follower cannot remove the source's jitter or the device's fixed audio
 latency, and deliberate tempo changes require acquisition time. This package
 was flashed to the user's FM-1 on 2026-10-21; the updater verified identity
 `FM-1_9010101`, and the saved project matches the pre-update backup exactly.
+
+## Output alignment: 1.1.2-aligned
+
+The user reports the clock is steadier, but FM-1 audio remains approximately
+17 ms late in a mixer recording. This matches the fixed pipeline delay that
+the first tests omitted: one 512-frame DMA half (11.61 ms), plus approximately
+half a half of average MIDI polling delay (5.80 ms).
+
+The physical FM-1 now sets a 768-sample (17.41 ms) phase advance in the external
+clock follower. It uses the same smoothed tick-count feedback; the phase target
+changes while the audio buffers and clock filtering stay the same. Internal
+tempo is unaffected, and the generic sequencer defaults to zero compensation
+for hosts that do not have this hardware pipeline. No project format changes
+or new persistent settings are required.
+
+The new regression includes 512 samples of modeled DAC-output latency instead
+of testing only render timestamps. At 120 BPM the previous source is 16.72 ms
+late on average; the compensated source is 0.22 ms early on average, with a
+65-sample / 1.47 ms peak-to-peak variation. Across the tested 30..300 BPM range,
+settled mean residuals are between 1.20 ms early and 0.74 ms late. Both
+uncompensated and compensated faster/slower tempo transitions pass the count
+and phase checks. All 38 host scenarios and sequencer ASan/UBSan checks pass.
+These are modeled results, not new measurements from the physical FM-1.
+
+Prediction only aligns ongoing pattern playback after the follower settles.
+A first Start, a sudden Stop or an immediately triggered MIDI note cannot be
+predicted ahead of its arrival. USB pattern notes with NOTES OUT enabled also
+follow the advanced sequencer, so their transmission time is earlier too.
+
+Package: `build/x0x-1.1.2-aligned.fwsc`, identity `FM-1_9010102`. The target
+passes flash/RAM/pool, HAL and single-precision checks: app 544080 bytes,
+RAM .data+.bss 97740 bytes, pool 335808 bytes. This is 48 bytes of app flash and
+4 bytes of RAM more than 1.1.1. Audio buffers and sample storage are unchanged.
+The package and its licensed sample inputs stay local and excluded from Git.
+It has not yet been flashed; physical mixer-output alignment remains to be checked.

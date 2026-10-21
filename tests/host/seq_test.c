@@ -399,11 +399,12 @@ static void test_clock_buffering(void)
     CHECK(!S.ext && !S.ext_period, "clock loss resets stale tempo for the next acquisition");
 }
 
-static void test_clock_tempo_changes(void)
+static void test_clock_tempo_changes(uint32_t advance)
 {
     double tick = 0, grid[256];
     int sent = 0, grids = 0, i, k, lo = 1000000, hi = -1000000;
     reset();
+    S.ext_advance = advance;
     P[0].drum[0].hit[7][0] = 0xFFFFu;
     P[0].drum[0].len = 16;
     seq_midi_start(&S, 0);
@@ -418,14 +419,56 @@ static void test_clock_tempo_changes(void)
     }
     for (i = 0, k = 0; (i = find(E_DRUM, 7, i)) >= 0; i++, k++)
         if (k < grids && grid[k] > FS * 15u) {     /* settled after both faster and slower changes */
-            int error = (int)evs[i].t - (int)(grid[k] + 0.5);
+            int error = (int)evs[i].t + (advance ? 512 : 0) - (int)(grid[k] + 0.5);
             if (error < lo) lo = error;
             if (error > hi) hi = error;
         }
     CHECK(abs(k - grids) <= 1, "tempo changes preserve tick count: %d of %d steps", k, grids);
     CHECK(lo > -512 && hi < 1024 && hi - lo < 512, "tempo change re-locks, phase %d..%d samples", lo, hi);
     CHECK(S.ext_bpm > 88 && S.ext_bpm < 92, "tempo changed to 90 BPM: %.2f", (double)S.ext_bpm);
-    printf("  120 -> 150 -> 90 BPM: final phase %d..%d samples, count %d/%d\n", lo, hi, k, grids);
+    printf("  120 -> 150 -> 90 BPM (%u sample advance): phase %d..%d samples, count %d/%d\n", advance, lo, hi, k, grids);
+}
+
+static void test_external_audio_alignment(void)
+{
+    int bpm, i, k;
+    for (bpm = 30; bpm <= 300; bpm += 30) {
+        double period = 44100.0 * 60.0 / (bpm * 24.0), tick = 0, step = period * 6.0;
+        uint32_t end = (uint32_t)(step * 256);
+        int lo = 1000000, hi = -1000000, count = 0;
+        long sum = 0;
+        reset();
+        S.ext_advance = 512 + 256;                 /* physical FM-1: DMA half + average polling delay */
+        P[0].drum[0].hit[7][0] = 0xFFFFu;
+        seq_midi_start(&S, 0);
+        while (now < end) {
+            while (tick <= now) { seq_ext_clock(&S); tick += period; }
+            run(end - now < 512u ? end - now : 512u);
+        }
+        for (i = 0, k = 0; (i = find(E_DRUM, 7, i)) >= 0; i++, k++) {
+            /* A rendered sample reaches the analog DMA output one half later. */
+            int error = (int)evs[i].t + 512 - (int)(k * step + 0.5);
+            if (k < 32) continue;
+            if (error < lo) lo = error;
+            if (error > hi) hi = error;
+            sum += error;
+            count++;
+        }
+        CHECK(count > 200 && abs((int)(sum / count)) < 128, "%d BPM audio mean aligned: %ld / %d samples", bpm, sum, count);
+        CHECK(hi - lo < 256 && lo > -384 && hi < 384, "%d BPM audio phase %d..%d samples", bpm, lo, hi);
+        CHECK(k == 257, "%d BPM render-ahead predicts next grid without skipping steps: %d", bpm, k);
+        printf("  compensated audio %d BPM: phase %d..%d samples, mean %.2f ms\n", bpm, lo, hi,
+               (double)sum * 1000.0 / (count * 44100.0));
+    }
+    /* Compensation only applies to the external follower; internal tempo stays sample accurate. */
+    reset();
+    S.bpm = 120;
+    S.ext_advance = 768;
+    P[0].drum[0].hit[7][0] = 0xFFFF;
+    seq_start(&S);
+    run(FS);
+    for (i = 0, k = 0; (i = find(E_DRUM, 7, i)) >= 0; i++, k++)
+        CHECK(abs((int)evs[i].t - (int)(k * 5512.5 + 0.5)) <= 1, "internal clock ignores external advance");
 }
 
 static void test_record_grid(void)
@@ -568,7 +611,9 @@ int main(void)
     test_song();
     test_ext_clock_and_midi_out();
     test_clock_buffering();
-    test_clock_tempo_changes();
+    test_clock_tempo_changes(0);
+    test_clock_tempo_changes(768);
+    test_external_audio_alignment();
     test_record_grid();
     test_external_swing_and_cue();
     test_break_clock();

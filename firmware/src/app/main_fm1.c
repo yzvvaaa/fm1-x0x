@@ -432,6 +432,8 @@ static void fm1_main(void)
     led_pos_init();
     plat_perf_init();
     engine_init(proj.pat, &proj.arr.song, proj.arr.lane, &proj.sound);
+    /* One DMA half ahead of the speakers, plus half a half's average MIDI polling wait. */
+    seq.ext_advance = HALF_FRAMES + HALF_FRAMES / 2u;
     if (project_load() != 0)
         project_defaults();                         /* nothing saved yet (or another format) */
     engine_apply_sound(&proj.sound);
