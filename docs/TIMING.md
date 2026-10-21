@@ -77,4 +77,5 @@ RAM; the pool and sample storage are unchanged. The audio buffer size is unchang
 Physical TRS clock-to-audio timing and live-key latency have not been measured.
 The follower cannot remove the source's jitter or the device's fixed audio
 latency, and deliberate tempo changes require acquisition time. This package
-has not been flashed to the user's FM-1.
+was flashed to the user's FM-1 on 2026-10-21; the updater verified identity
+`FM-1_9010101`, and the saved project matches the pre-update backup exactly.

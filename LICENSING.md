@@ -29,6 +29,11 @@ of your choosing into a build or onto a device; those recordings keep their own 
 
 ## Felucca Assets
 
+The local Ableton hi-hat recordings are also excluded from Git. Neither those
+recordings nor generated audio/tables or firmware embedding them are distributed
+with this source. Builders must supply their own permitted recordings; the GPL
+code licence does not grant rights to those inputs.
+
 Felucca's non-GPL assets — the icon atlas, the panel photo and the Hügelton drum pack —
 are **not** part of this fork and are not used by it. Felucca's section 7 additional
 permission concerns those assets only, so it is not needed here.
