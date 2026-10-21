@@ -70,7 +70,9 @@ X0X is GPL-3.0-only, like Felucca, 9W9, 8W8 and schwung-tb3po. Open303 (by Robin
 MIT. BB Gen is ported from mestela's schwung-breakbeat with the author's permission. The 909's
 ride and crash samples come from ER-99 (Matthew Cieplak, GPL-3.0). This local version's hi-hat
 recordings are user-supplied Ableton Core Library samples and retain their own rights
-(see [sample notes](assets/909/README.txt)). The fonts are Barlow
+(see [sample notes](assets/909/README.txt)). They are excluded from Git; supply your
+own permitted recordings to build. Firmware containing them is kept local too.
+The fonts are Barlow
 Semi Condensed and Terminus (SIL OFL 1.1).
 
 The second core follows what keremimo's [Melodee](https://github.com/keremimo/melodee) found on the

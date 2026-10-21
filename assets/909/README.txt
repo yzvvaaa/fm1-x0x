@@ -1,5 +1,11 @@
 909 samples in this local version:
 
+LOCAL-ONLY INPUTS: ch.wav and oh.wav are deliberately excluded from Git and
+are not distributed with this source. Supply your own permitted mono 44.1 kHz,
+16-bit WAV recordings at those paths before building. The generator reports
+missing inputs rather than substituting sounds. Do not publish these Ableton
+recordings, generated sample tables, rendered loops or firmware containing them.
+
 ch.wav and oh.wav: Hihat Closed 909.aif and Hihat Open 909.aif supplied by the
 user from Ableton Live 12 Suite's Core Library/Samples/One Shots/Drums/Hihat/.
 Converted from mono 96 kHz/24-bit to mono 44.1 kHz/16-bit PCM using FFmpeg's
