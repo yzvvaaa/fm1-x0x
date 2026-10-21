@@ -2,3 +2,9 @@ build/
 .DS_Store
 __pycache__/
 *.o
+# Licensed recordings and firmware containing them stay local.
+/assets/909/ch.wav
+/assets/909/oh.wav
+*.fwsc
+x0x_drum_samples.h
+x0x_break_bank.h

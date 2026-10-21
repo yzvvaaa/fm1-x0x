@@ -23,6 +23,19 @@ def wav(path, channels=1, rate=44100, width=2):
 
 with tempfile.TemporaryDirectory() as td:
     tmp = Path(td)
+    assets, argv = gen.ASSETS, sys.argv
+    try:
+        gen.ASSETS = tmp
+        sys.argv = [str(ROOT / "tools/gen_drum_samples.py"), str(tmp / "missing.h")]
+        try:
+            gen.main()
+        except SystemExit as e:
+            assert "local-only" in str(e) and "ch.wav" in str(e) and "oh.wav" in str(e)
+        else:
+            raise AssertionError("missing local recordings accepted")
+        assert not (tmp / "missing.h").exists()
+    finally:
+        gen.ASSETS, sys.argv = assets, argv
     for channels, rate, width in [(2, 44100, 2), (1, 48000, 2), (1, 44100, 3)]:
         wav(tmp / "bad.wav", channels, rate, width)
         try:
